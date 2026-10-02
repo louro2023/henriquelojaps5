@@ -1,0 +1,1 @@
+{"name":"henrique-store","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node --experimental-sqlite server.js","test":"node --experimental-sqlite --test"},"engines":{"node":">=22.13.0"},"devDependencies":{"@playwright/test":"^1.63.0"}}

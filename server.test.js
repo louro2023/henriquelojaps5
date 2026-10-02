@@ -1,0 +1,31 @@
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+const directory=mkdtempSync(path.join(tmpdir(),'henrique-test-'));
+const child=spawn(process.execPath,['--experimental-sqlite','server.js'],{env:{...process.env,PORT:'3098',DATA_DIR:directory,ADMIN_PASSWORD:'test-password-12345',NODE_ENV:'development'},stdio:['ignore','pipe','pipe']});
+const ready=new Promise((resolve,reject)=>{child.stdout.once('data',resolve);child.once('error',reject);child.once('exit',code=>reject(Error('Servidor encerrou: '+code)));});
+after(async()=>{child.kill();await new Promise(resolve=>child.exitCode!==null?resolve():child.once('exit',resolve));rmSync(directory,{recursive:true,force:true});});
+test('catálogo compartilhado e operações administrativas protegidas',async()=>{
+  await ready;const request=(url,options={})=>fetch('http://localhost:3098'+url,options);
+  assert.equal((await request('/data/senha-admin.txt')).status,404);
+  assert.equal((await request('/api/admin/games')).status,401);
+  assert.equal((await request('/api/login',{method:'POST',body:JSON.stringify({password:'wrong'})})).status,401);
+  const login=await request('/api/login',{method:'POST',body:JSON.stringify({password:'test-password-12345'})});assert.equal(login.status,200);
+  const cookie=login.headers.get('set-cookie').split(';')[0];
+  const options=(method,body)=>({method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  const game={title:'Jogo de teste',category:'Indie',platform:'PC',description:'Teste de publicação',cover:'',driveUrl:'https://drive.google.com/file/d/test/view',instructions:'Baixe e instale.',published:false,featured:false};
+  const created=await request('/api/admin/games',options('POST',game));assert.equal(created.status,201);const {id}=await created.json();
+  assert.equal((await (await request('/api/games')).json()).some(g=>g.id===id),false);
+  assert.equal((await request('/api/admin/games/'+id,options('PUT',{...game,published:true,driveUrl:'https://evil.example/file'}))).status,400);
+  assert.equal((await request('/api/admin/games/'+id,options('PUT',{...game,published:true,driveUrl:''}))).status,400);
+  assert.equal((await request('/api/admin/games/'+id,options('PUT',{...game,published:true}))).status,200);
+  const publicGame=(await (await request('/api/games')).json()).find(g=>g.id===id);assert.equal(publicGame.instructions,game.instructions);assert.equal(publicGame.driveUrl,game.driveUrl);
+  assert.equal((await request('/api/admin/games/'+id,{...options('DELETE'),headers:{Cookie:cookie,Origin:'https://external.example'}})).status,403);
+  assert.equal((await request('/api/admin/games/'+id,options('DELETE'))).status,200);
+  assert.equal((await (await request('/api/games')).json()).some(g=>g.id===id),false);
+  await request('/api/logout',options('POST'));assert.equal((await request('/api/admin/games',options('GET'))).status,401);
+});

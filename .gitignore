@@ -1,0 +1,5 @@
+data/
+node_modules/
+.env
+*-server*.log
+store-*.png
