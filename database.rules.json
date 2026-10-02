@@ -1,0 +1,12 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "catalogue": {
+      "games": {
+        ".indexOn": ["published"],
+        ".read": "query.orderByChild === 'published' && query.equalTo === true"
+      }
+    }
+  }
+}

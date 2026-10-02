@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { getStore, storageStatus, ConfigurationError, ConflictError } from './lib/storage.js';
 import { verifyPassword, issueSession, authenticated, attempt, resetAttempts } from './lib/auth.js';
+import { PermissionError } from './lib/errors.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 class ValidationError extends Error {}
@@ -68,7 +69,7 @@ export default async function handler(req, res) {
     }
     if (!['GET', 'HEAD'].includes(req.method) && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return send(403, { error: 'Origem não permitida.' });
     if (pathname === '/api/games' && req.method === 'GET') {
-      const games = await getStore().games();
+      const games = await getStore({ publicOnly: true }).games();
       return send(200, games.filter(game => game.published));
     }
     const token = /(?:^|;\s*)session=([^;]+)/.exec(req.headers.cookie || '')?.[1];
@@ -116,6 +117,7 @@ export default async function handler(req, res) {
     }
     send(404, { error: 'Recurso não encontrado.' });
   } catch (error) {
+    if (error instanceof PermissionError) return send(503, { error: error.message });
     if (error instanceof ConfigurationError) return send(503, { error: error.message });
     if (error instanceof ConflictError) return send(409, { error: error.message });
     if (error instanceof ValidationError) return send(400, { error: error.message });

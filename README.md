@@ -1,58 +1,49 @@
 # Henrique Store
 
-Loja de jogos digitais com catálogo, busca, categorias e administração por senha. O cadastro inclui capa, descrição, link do Google Drive e instruções de instalação. **Não usa banco de dados.**
+Loja de jogos com catálogo público e painel administrativo em `/admin`. Na Vercel, os jogos ficam no **Firebase Realtime Database** do projeto `lojaps5`. O painel continua usando a senha atual (`ADMIN_PASSWORD`); não usa Firebase Authentication e não exige cadastro de usuários no Firebase.
 
-## Usar no computador
+## Configurar o Firebase
 
-Com Node.js 22.x instalado:
+1. Abra **Realtime Database → Regras**, copie o conteúdo de [`database.rules.json`](database.rules.json) e clique em **Publicar**. Essas regras substituem as regras temporárias e a configuração anterior que bloqueava todas as leituras.
+2. Em **Configurações do projeto → Contas de serviço → Firebase Admin SDK**, clique em **Gerar nova chave privada**.
+3. Na Vercel, em **Settings → Environment Variables**, crie `FIREBASE_SERVICE_ACCOUNT` para Production e cole o conteúdo completo do JSON baixado. Mantenha `ADMIN_PASSWORD` com a senha atual.
+4. Faça um novo deploy.
+
+A conta de serviço precisa ter acesso ao Realtime Database do projeto `lojaps5`. A configuração pública do app (`apiKey`, `appId`, etc.) não substitui essa credencial. O JSON privado deve ficar somente na variável de ambiente: não o coloque no GitHub, no JavaScript público nem na conversa.
+
+Não é necessário configurar Blob, PostgreSQL ou `DATABASE_URL`. A URL `https://lojaps5-default-rtdb.firebaseio.com` já está no código. As antigas variáveis de Blob são ignoradas. Os dados locais ou de um Blob anterior não são migrados automaticamente.
+
+## Regras e persistência
+
+O catálogo fica em `/catalogue`, com `version`, `nextId` e um mapa `games`. O catálogo começa vazio. Apenas consultas filtradas por `published = true` podem ser feitas publicamente; jogos ocultos não são acessíveis pela API pública nem por uma leitura direta sem autorização no Firebase. A conta de serviço realiza as operações administrativas após a validação da sessão do painel.
+
+Cada alteração lê a versão atual e faz uma gravação condicional com ETag. Se outra instância gravar primeiro, a operação lê novamente antes de tentar salvar. Falhas de acesso não apagam dados nem substituem o catálogo por exemplos.
+
+No painel, **Ocultar do público** retira o jogo do catálogo e do banner sem apagar seus dados. **Publicar** volta a exibi-lo. **Excluir** remove o jogo após confirmação. Para publicar um jogo, preencha o link HTTPS do Google Drive e as instruções de instalação.
+
+## Rodar no computador
+
+Com Node.js 22:
 
 ```powershell
 npm install
 npm start
 ```
 
-Loja: http://localhost:3000. Painel: http://localhost:3000/admin.
+Loja: `http://localhost:3000`. Painel: `http://localhost:3000/admin`.
 
-A senha local fica em `data/senha-admin.txt`; se não existir, é criada ao tentar entrar. Você também pode definir `ADMIN_PASSWORD` (12 a 256 caracteres), que tem prioridade sobre o arquivo. O catálogo é salvo em `data/catalogue.json`. Faça backup da pasta `data`, que não é publicada no GitHub nem servida pela aplicação. Execute apenas um processo local para essa pasta.
+Por padrão, o modo local usa `data/catalogue.json`. A senha fica em `data/senha-admin.txt` ou em `ADMIN_PASSWORD` (12 a 256 caracteres). Execute apenas um processo local para essa pasta e faça backup de `data/`.
 
-## Acessar o painel na Vercel
+Para usar o Firebase também localmente, defina `STORE_BACKEND=firebase` e `FIREBASE_SERVICE_ACCOUNT` no ambiente do processo. Na Vercel, o Firebase é sempre usado, independentemente de `STORE_BACKEND`. Arquivos `.env` não são carregados automaticamente pelo comando `npm start`.
 
-1. Importe o repositório na Vercel. O `vercel.json` configura a página e a API.
-2. Em **Settings → Environment Variables**, defina `ADMIN_PASSWORD` para Production com sua senha.
-3. Faça **Redeploy** e acesse `/admin`.
-
-**O login e a visualização do painel não exigem PostgreSQL, SQLite, DATABASE_URL nem Blob.** A senha nunca é enviada pelo GitHub; deve ser definida diretamente na hospedagem. As antigas variáveis de banco não são mais utilizadas.
-
-## Salvar jogos online sem banco de dados
-
-Os jogos ficam em um arquivo JSON. No computador, ele é gravado em disco. Na Vercel, o disco da função não é persistente, então o arquivo deve ficar em um **Vercel Blob privado**, que é armazenamento de arquivos:
-
-1. Abra **Storage** no projeto, crie um **Blob store privado** e conecte ao projeto.
-2. Confira se a conexão adicionou `BLOB_READ_WRITE_TOKEN` às variáveis de Production.
-3. Faça **Redeploy**.
-
-Pronto: o painel salva `henrique-store/catalogue.json` no Blob, e todos os visitantes consultam o mesmo catálogo. O token só é utilizado pelo servidor. Rascunhos ficam no arquivo privado e não são retornados pela API pública. Atualizações usam a versão do arquivo (ETag) para evitar sobrescrever gravações simultâneas.
-
-Sem Blob, o painel continua acessível e mostra um aviso de que a gravação ainda não está disponível; nenhuma alteração é apresentada como salva. O catálogo público fica vazio. Não há gravação em `/tmp` nem dependência de localStorage para compartilhar jogos. Uma falha no Blob gera erro temporário, sem substituir os dados por exemplos.
-
-Os jogos do computador não são enviados automaticamente ao Blob. O SQLite da versão anterior pode ser mantido como backup; esta versão não o utiliza.
-
-## Cadastrar jogos
-
-Entre no painel e clique em **Adicionar jogo**. Preencha nome, categoria, plataforma, capa HTTPS, descrição, link HTTPS do Google Drive e orientações de instalação. Habilite o compartilhamento do arquivo no Drive. Marque **Publicar na loja** e salve; sem marcar essa opção, o jogo fica como rascunho. O destaque mais recente aparece no banner.
-
-O catálogo começa vazio, sem jogos de demonstração. Somente jogos cadastrados pelo administrador aparecem na loja; um catálogo vazio permanece vazio.
-
-Na lista do administrador, **Ocultar do público** remove o jogo da loja e do banner sem apagar seus dados. Ele continua disponível no painel com status **Oculto**; use **Publicar** para exibi-lo novamente. Exclusão e alterações de visibilidade na Vercel exigem o Blob configurado acima. Erros de exclusão aparecem na própria janela de confirmação.
-
-## Sessões e testes
-
-As sessões são cookies HttpOnly assinados, com duração de oito horas, SameSite=Strict e Secure na Vercel. Funcionam entre instâncias sem armazenar sessões no servidor. Logout remove o cookie do navegador; uma cópia anterior do token permanece válida até expirar. Trocar `ADMIN_PASSWORD` e republicar invalida as assinaturas anteriores. O limitador de login em memória é por instância; regras globais adicionais podem ser configuradas no firewall da Vercel.
+## Testes e sessões
 
 ```powershell
 npm test
 ```
 
-Os testes verificam login sem banco, assinatura das sessões, criação/publicação/exclusão, proteção do painel e persistência em JSON.
+Os testes cobrem autenticação por senha, proteção das rotas, armazenamento local e a integração REST do Firebase com respostas simuladas: assinatura da credencial, gravação, publicação, ocultação, exclusão, concorrência e falhas. Eles não alteram o banco real. A validação com o serviço real depende da credencial configurada na hospedagem.
 
-Esta versão entrega downloads públicos e não processa pagamentos. Imagens de demonstração são carregadas do CDN da Steam; a fonte vem do Google Fonts, com fontes locais como alternativa.
+As sessões usam cookies HttpOnly assinados, SameSite=Strict, Secure na Vercel e validade de oito horas. Logout remove o cookie do navegador; trocar `ADMIN_PASSWORD` invalida as sessões anteriores. A credencial do Firebase e seus tokens nunca são enviados ao navegador.
+
+Referências: [autenticação REST do Firebase](https://firebase.google.com/docs/database/rest/auth), [gravações condicionais](https://firebase.google.com/docs/database/rest/save-data), [regras baseadas em consultas](https://firebase.google.com/docs/database/security/rules-conditions#query-based_rules).

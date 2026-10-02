@@ -1,1 +1,1 @@
-{"name":"henrique-store","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node server.js","test":"node --test"},"engines":{"node":"22.x"},"devDependencies":{"@playwright/test":"^1.63.0"},"dependencies":{"@vercel/blob":"^2.8.0"}}
+{"name":"henrique-store","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node server.js","test":"node --test"},"engines":{"node":"22.x"},"devDependencies":{"@playwright/test":"^1.63.0"}}
