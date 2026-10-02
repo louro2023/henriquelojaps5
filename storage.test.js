@@ -13,14 +13,17 @@ test('JSON preserva jogos entre instâncias e serializa alterações simultânea
   delete process.env.VERCEL;
   try {
     const first = getStore(), second = getStore();
+    assert.deepEqual(await first.games(), []);
     const ids = await Promise.all(Array.from({ length: 10 }, (_, index) => first.saveGame({ title: 'Jogo ' + index, published: false })));
     assert.equal(new Set(ids).size, 10);
-    assert.equal((await second.games()).length, 16);
+    assert.equal((await second.games()).length, 10);
     await second.saveGame({ title: 'Atualizado', published: true }, ids[0]);
     assert.equal((await first.getGame(ids[0])).title, 'Atualizado');
     await first.deleteGame(1);
     assert.equal(await getStore().getGame(1), null);
-    assert.equal(JSON.parse(await readFile(path.join(directory, 'catalogue.json'))).games.length, 15);
+    assert.equal(JSON.parse(await readFile(path.join(directory, 'catalogue.json'))).games.length, 9);
+    for (const game of await second.games()) await second.deleteGame(game.id);
+    assert.deepEqual(await getStore().games(), []);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

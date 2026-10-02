@@ -33,7 +33,7 @@ Os jogos ficam em um arquivo JSON. No computador, ele é gravado em disco. Na Ve
 
 Pronto: o painel salva `henrique-store/catalogue.json` no Blob, e todos os visitantes consultam o mesmo catálogo. O token só é utilizado pelo servidor. Rascunhos ficam no arquivo privado e não são retornados pela API pública. Atualizações usam a versão do arquivo (ETag) para evitar sobrescrever gravações simultâneas.
 
-Sem Blob, o painel continua acessível e mostra um aviso de que a gravação ainda não está disponível; nenhuma alteração é apresentada como salva. O catálogo público mostra os exemplos. Não há gravação em `/tmp` nem dependência de localStorage para compartilhar jogos. Uma falha no Blob gera erro temporário, sem substituir os dados por exemplos.
+Sem Blob, o painel continua acessível e mostra um aviso de que a gravação ainda não está disponível; nenhuma alteração é apresentada como salva. O catálogo público fica vazio. Não há gravação em `/tmp` nem dependência de localStorage para compartilhar jogos. Uma falha no Blob gera erro temporário, sem substituir os dados por exemplos.
 
 Os jogos do computador não são enviados automaticamente ao Blob. O SQLite da versão anterior pode ser mantido como backup; esta versão não o utiliza.
 
@@ -41,7 +41,7 @@ Os jogos do computador não são enviados automaticamente ao Blob. O SQLite da v
 
 Entre no painel e clique em **Adicionar jogo**. Preencha nome, categoria, plataforma, capa HTTPS, descrição, link HTTPS do Google Drive e orientações de instalação. Habilite o compartilhamento do arquivo no Drive. Marque **Publicar na loja** e salve; sem marcar essa opção, o jogo fica como rascunho. O destaque mais recente aparece no banner.
 
-Os seis jogos iniciais são demonstrações sem download. Podem ser editados ou excluídos. Não são recriados após a gravação de um catálogo vazio.
+O catálogo começa vazio, sem jogos de demonstração. Somente jogos cadastrados pelo administrador aparecem na loja; um catálogo vazio permanece vazio.
 
 Na lista do administrador, **Ocultar do público** remove o jogo da loja e do banner sem apagar seus dados. Ele continua disponível no painel com status **Oculto**; use **Publicar** para exibi-lo novamente. Exclusão e alterações de visibilidade na Vercel exigem o Blob configurado acima. Erros de exclusão aparecem na própria janela de confirmação.
 

@@ -36,13 +36,13 @@ test('Vercel sem banco abre a loja e o painel sem gravar arquivos', async () => 
     assert.equal((await request('/admin')).status, 200);
     const games = await request('/api/games');
     assert.equal(games.status, 200);
-    assert.equal(JSON.parse(games.body).length, 6);
-    assert.equal(JSON.parse(games.body).every(game => game.demo && !game.driveUrl), true);
+    assert.deepEqual(JSON.parse(games.body), []);
     assert.equal(JSON.parse((await request('/api/session')).body).authenticated, false);
     const login = await request('/api/login', 'POST', { password: 'test-password-12345' });
     assert.equal(login.status, 200, 'Login deve funcionar sem banco nem Blob');
     const cookie = login.headers['set-cookie'].split(';')[0];
     assert.equal((await request('/api/admin/games', 'GET', undefined, cookie)).status, 200);
+    assert.deepEqual(JSON.parse((await request('/api/admin/games', 'GET', undefined, cookie)).body), []);
     assert.equal(JSON.parse((await request('/api/admin/storage', 'GET', undefined, cookie)).body).writable, false);
     const game = { title: 'Não salvar', description: 'Teste', category: 'Indie', platform: 'PC', cover: '', driveUrl: '', instructions: '', published: false };
     const write = await request('/api/admin/games', 'POST', game, cookie);
