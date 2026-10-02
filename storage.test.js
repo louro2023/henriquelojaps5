@@ -1,36 +1,40 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PGlite } from '@electric-sql/pglite';
-import { initializeDatabase, createStore, postgresQuery } from './lib/storage.js';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { getStore } from './lib/storage.js';
+import { issueSession, authenticated, verifyPassword } from './lib/auth.js';
 
-test('PostgreSQL: catálogo, sessões e tentativas são compartilhados entre instâncias', async () => {
-  const pg = new PGlite();
+test('JSON preserva jogos entre instâncias e serializa alterações simultâneas', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'henrique-json-'));
+  process.env.DATA_DIR = directory;
+  process.env.BLOB_READ_WRITE_TOKEN = '';
+  delete process.env.VERCEL;
   try {
-    const db = { kind: 'postgres', query: (sql, args = []) => pg.query(postgresQuery(sql), args) };
-    await initializeDatabase(db);
-    const first = createStore(db), second = createStore(db);
-    assert.equal((await first.games()).length, 6);
-    const game = { title: 'Jogo persistente', published: false, description: 'Acentos: ação' };
-    const id = await first.saveGame(game);
-    assert.equal((await second.getGame(id)).description, game.description);
-    await second.saveGame({ ...game, published: true }, id);
-    assert.equal((await first.getGame(id)).published, true);
+    const first = getStore(), second = getStore();
+    const ids = await Promise.all(Array.from({ length: 10 }, (_, index) => first.saveGame({ title: 'Jogo ' + index, published: false })));
+    assert.equal(new Set(ids).size, 10);
+    assert.equal((await second.games()).length, 16);
+    await second.saveGame({ title: 'Atualizado', published: true }, ids[0]);
+    assert.equal((await first.getGame(ids[0])).title, 'Atualizado');
     await first.deleteGame(1);
-    await initializeDatabase(db);
-    assert.equal(await second.getGame(1), null, 'Exemplos excluídos não devem reaparecer');
-    const token = await first.login('credential-hash');
-    assert.equal(await second.authenticated(token, 'credential-hash'), true);
-    assert.equal(await second.authenticated(token, 'changed-password-hash'), false);
-    await second.logout(token);
-    assert.equal(await first.authenticated(token, 'credential-hash'), false);
-    const expired = await first.login('credential-hash');
-    await pg.query('UPDATE sessions SET expires=0');
-    assert.equal(await second.authenticated(expired, 'credential-hash'), false);
-    const counts = await Promise.all(Array.from({ length: 11 }, (_, index) => (index % 2 ? first : second).attempt('same-ip')));
-    assert.deepEqual(counts.sort((a,b) => a-b), Array.from({ length: 11 }, (_, index) => index+1));
-    await second.resetAttempts('same-ip');
-    assert.equal(await first.attempt('same-ip'), 1);
-    await second.deleteGame(id);
-    assert.equal(await first.getGame(id), null);
-  } finally { await pg.close(); }
+    assert.equal(await getStore().getGame(1), null);
+    assert.equal(JSON.parse(await readFile(path.join(directory, 'catalogue.json'))).games.length, 15);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('Sessão assinada funciona sem banco, rejeita falsificação, expiração e troca de senha', async () => {
+  process.env.ADMIN_PASSWORD = 'test-password-12345';
+  assert.equal(verifyPassword('wrong'), false);
+  assert.equal(verifyPassword(process.env.ADMIN_PASSWORD), true);
+  const now = Date.now();
+  const token = issueSession(now);
+  assert.equal(authenticated(token, now), true);
+  const anotherInstance = await import('./lib/auth.js?second-instance');
+  assert.equal(anotherInstance.authenticated(token, now), true);
+  assert.equal(authenticated(token + 'x', now), false);
+  assert.equal(authenticated(token, now + 28800001), false);
+  process.env.ADMIN_PASSWORD = 'changed-password-12345';
+  assert.equal(authenticated(token, now), false);
 });

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const directory=mkdtempSync(path.join(tmpdir(),'henrique-test-'));
-const child=spawn(process.execPath,['--experimental-sqlite','server.js'],{env:{...process.env,PORT:'3098',DATA_DIR:directory,ADMIN_PASSWORD:'test-password-12345',NODE_ENV:'development'},stdio:['ignore','pipe','pipe']});
+const child=spawn(process.execPath,['server.js'],{env:{...process.env,PORT:'3098',DATA_DIR:directory,ADMIN_PASSWORD:'test-password-12345',NODE_ENV:'development',VERCEL:'',BLOB_READ_WRITE_TOKEN:''},stdio:['ignore','pipe','pipe']});
 const ready=new Promise((resolve,reject)=>{child.stdout.once('data',resolve);child.once('error',reject);child.once('exit',code=>reject(Error('Servidor encerrou: '+code)));});
 after(async()=>{child.kill();await new Promise(resolve=>child.exitCode!==null?resolve():child.once('exit',resolve));rmSync(directory,{recursive:true,force:true});});
 test('catálogo compartilhado e operações administrativas protegidas',async()=>{
@@ -27,5 +27,5 @@ test('catálogo compartilhado e operações administrativas protegidas',async()=
   assert.equal((await request('/api/admin/games/'+id,{...options('DELETE'),headers:{Cookie:cookie,Origin:'https://external.example'}})).status,403);
   assert.equal((await request('/api/admin/games/'+id,options('DELETE'))).status,200);
   assert.equal((await (await request('/api/games')).json()).some(g=>g.id===id),false);
-  await request('/api/logout',options('POST'));assert.equal((await request('/api/admin/games',options('GET'))).status,401);
+  const logout=await request('/api/logout',options('POST'));assert.match(logout.headers.get('set-cookie'),/Max-Age=0/);assert.equal((await request('/api/admin/games')).status,401);
 });

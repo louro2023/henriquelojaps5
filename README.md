@@ -1,53 +1,56 @@
 # Henrique Store
 
-Loja de jogos digitais com catálogo público, busca, categorias, detalhes, download pelo Google Drive e instruções de instalação. Administração protegida por senha com criação, edição, publicação, rascunhos e exclusão. Usa SQLite no computador e PostgreSQL na Vercel, com catálogo e sessões compartilhados entre visitantes e instâncias.
+Loja de jogos digitais com catálogo, busca, categorias e administração por senha. O cadastro inclui capa, descrição, link do Google Drive e instruções de instalação. **Não usa banco de dados.**
 
-## Rodar no Windows
+## Usar no computador
 
-Instale Node.js 22.13 ou superior e execute na pasta do projeto:
+Com Node.js 22.x instalado:
 
 ```powershell
+npm install
 npm start
 ```
 
-Abra http://localhost:3000. Administração: http://localhost:3000/admin.
+Loja: http://localhost:3000. Painel: http://localhost:3000/admin.
 
-No primeiro acesso local ao catálogo é gerada uma senha em `data/senha-admin.txt`. Leia esse arquivo para entrar. A senha não é exposta no site. Como alternativa, defina a variável de ambiente `ADMIN_PASSWORD` (12 a 256 caracteres). Quando definida, essa variável tem prioridade sobre a senha local. Alterá-la invalida as sessões anteriores após reiniciar/republicar a aplicação.
+A senha local fica em `data/senha-admin.txt`; se não existir, é criada ao tentar entrar. Você também pode definir `ADMIN_PASSWORD` (12 a 256 caracteres), que tem prioridade sobre o arquivo. O catálogo é salvo em `data/catalogue.json`. Faça backup da pasta `data`, que não é publicada no GitHub nem servida pela aplicação. Execute apenas um processo local para essa pasta.
+
+## Acessar o painel na Vercel
+
+1. Importe o repositório na Vercel. O `vercel.json` configura a página e a API.
+2. Em **Settings → Environment Variables**, defina `ADMIN_PASSWORD` para Production com sua senha.
+3. Faça **Redeploy** e acesse `/admin`.
+
+**O login e a visualização do painel não exigem PostgreSQL, SQLite, DATABASE_URL nem Blob.** A senha nunca é enviada pelo GitHub; deve ser definida diretamente na hospedagem. As antigas variáveis de banco não são mais utilizadas.
+
+## Salvar jogos online sem banco de dados
+
+Os jogos ficam em um arquivo JSON. No computador, ele é gravado em disco. Na Vercel, o disco da função não é persistente, então o arquivo deve ficar em um **Vercel Blob privado**, que é armazenamento de arquivos:
+
+1. Abra **Storage** no projeto, crie um **Blob store privado** e conecte ao projeto.
+2. Confira se a conexão adicionou `BLOB_READ_WRITE_TOKEN` às variáveis de Production.
+3. Faça **Redeploy**.
+
+Pronto: o painel salva `henrique-store/catalogue.json` no Blob, e todos os visitantes consultam o mesmo catálogo. O token só é utilizado pelo servidor. Rascunhos ficam no arquivo privado e não são retornados pela API pública. Atualizações usam a versão do arquivo (ETag) para evitar sobrescrever gravações simultâneas.
+
+Sem Blob, o painel continua acessível e mostra um aviso de que a gravação ainda não está disponível; nenhuma alteração é apresentada como salva. O catálogo público mostra os exemplos. Não há gravação em `/tmp` nem dependência de localStorage para compartilhar jogos. Uma falha no Blob gera erro temporário, sem substituir os dados por exemplos.
+
+Os jogos do computador não são enviados automaticamente ao Blob. O SQLite da versão anterior pode ser mantido como backup; esta versão não o utiliza.
 
 ## Cadastrar jogos
 
-1. Entre na área administrativa e clique em **Adicionar jogo**.
-2. Preencha nome, categoria, plataforma, capa HTTPS e descrição.
-3. Coloque o link HTTPS do Google Drive e as orientações de instalação. No Drive, habilite o acesso para qualquer pessoa com o link.
-4. Marque **Publicar na loja** e salve. Sem marcar essa opção, o jogo fica como rascunho.
-5. Marque **Destacar no banner** para aparecer na abertura da loja. Se houver mais de um destaque, o cadastro mais recente tem prioridade.
+Entre no painel e clique em **Adicionar jogo**. Preencha nome, categoria, plataforma, capa HTTPS, descrição, link HTTPS do Google Drive e orientações de instalação. Habilite o compartilhamento do arquivo no Drive. Marque **Publicar na loja** e salve; sem marcar essa opção, o jogo fica como rascunho. O destaque mais recente aparece no banner.
 
-Os seis jogos iniciais são exemplos visuais com imagens remotas. Não incluem arquivos ou downloads. Podem ser editados ou excluídos pelo painel. Não são recriados ao reiniciar.
+Os seis jogos iniciais são demonstrações sem download. Podem ser editados ou excluídos. Não são recriados após a gravação de um catálogo vazio.
 
-## Publicar na Vercel
+## Sessões e testes
 
-1. Importe este repositório na Vercel. O `vercel.json` configura os arquivos estáticos e a função da API; não há compilação do frontend. Use Node.js 22.x.
-2. No projeto, abra **Storage → Create Database** e conecte um PostgreSQL, por exemplo Neon pelo Marketplace. Também é possível usar um PostgreSQL existente.
-3. Em **Settings → Environment Variables**, configure para **Production**:
-   - `DATABASE_URL`: URL de conexão PostgreSQL com pool e TLS fornecida pelo banco. `POSTGRES_URL` também é reconhecida.
-   - `ADMIN_PASSWORD`: sua senha administrativa de 12 a 256 caracteres. A senha local não é enviada para o GitHub nem copiada automaticamente para a Vercel.
-4. Faça um **Redeploy** depois de configurar as variáveis. As tabelas e os exemplos são criados automaticamente na primeira consulta ao banco. Nenhum comando SQL manual é necessário.
-5. Acesse `/admin` e entre com a senha configurada.
-
-Use outro banco para Preview caso habilite administração em ambientes de teste. Não coloque credenciais em arquivos versionados.
-
-Sem banco configurado, a loja abre com os seis exemplos, mas o login explica que falta configurar o PostgreSQL. O sistema não salva cadastros em memória ou em `/tmp`. Se um banco configurado estiver indisponível, a API retorna um erro temporário em vez de substituir o catálogo por exemplos.
-
-O SQLite local não é compatível com a persistência das funções da Vercel. Por isso a função não cria arquivos nem importa SQLite na nuvem. Dados, sessões e limites de tentativas de login ficam no PostgreSQL. A sessão dura oito horas, funciona entre instâncias e é revogada no logout. Cookies usam `Secure` automaticamente na Vercel.
-
-Os dados do computador (incluindo rascunhos) não são migrados automaticamente. Cadastre-os no painel online depois de conectar o banco. Para hospedagem tradicional com disco persistente, o SQLite continua disponível: configure `HOST=0.0.0.0`, `PORT` e `COOKIE_SECURE=true` com HTTPS e faça backups da pasta `data`.
-
-Esta versão entrega downloads públicos e não processa pagamentos nem controla compras. Se os jogos forem pagos, será necessário integrar um provedor de pagamento e uma biblioteca autenticada antes de disponibilizar os arquivos. Links públicos do Drive podem ser compartilhados.
-
-## Verificação
+As sessões são cookies HttpOnly assinados, com duração de oito horas, SameSite=Strict e Secure na Vercel. Funcionam entre instâncias sem armazenar sessões no servidor. Logout remove o cookie do navegador; uma cópia anterior do token permanece válida até expirar. Trocar `ADMIN_PASSWORD` e republicar invalida as assinaturas anteriores. O limitador de login em memória é por instância; regras globais adicionais podem ser configuradas no firewall da Vercel.
 
 ```powershell
 npm test
 ```
 
-As imagens das demonstrações são carregadas do CDN da Steam e a fonte do Google Fonts. A interface mantém fontes de sistema como alternativa.
+Os testes verificam login sem banco, assinatura das sessões, criação/publicação/exclusão, proteção do painel e persistência em JSON.
+
+Esta versão entrega downloads públicos e não processa pagamentos. Imagens de demonstração são carregadas do CDN da Steam; a fonte vem do Google Fonts, com fontes locais como alternativa.

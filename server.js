@@ -1,10 +1,9 @@
 import http from 'node:http';
-import { scryptSync, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { getStore, needsDatabase, ConfigurationError } from './lib/storage.js';
-import { demoGames } from './lib/demo.js';
+import { getStore, storageStatus, ConfigurationError, ConflictError } from './lib/storage.js';
+import { verifyPassword, issueSession, authenticated, attempt, resetAttempts } from './lib/auth.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 class ValidationError extends Error {}
@@ -69,34 +68,32 @@ export default async function handler(req, res) {
     }
     if (!['GET', 'HEAD'].includes(req.method) && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return send(403, { error: 'Origem não permitida.' });
     if (pathname === '/api/games' && req.method === 'GET') {
-      // Only unconfigured installations show samples; connection failures never replace saved data.
-      const games = needsDatabase() ? [...demoGames].reverse() : await (await getStore()).games();
+      const games = await getStore().games();
       return send(200, games.filter(game => game.published));
     }
     const token = /(?:^|;\s*)session=([^;]+)/.exec(req.headers.cookie || '')?.[1];
     if (pathname === '/api/session' && req.method === 'GET' && !token) return send(200, { authenticated: false });
     const secure = process.env.VERCEL || process.env.COOKIE_SECURE === 'true' ? '; Secure' : '';
     if (pathname === '/api/logout' && req.method === 'POST') {
-      if (token && !needsDatabase()) await (await getStore()).logout(token);
       res.setHeader('Set-Cookie', `session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`);
       return send(200, { ok: true });
     }
-    const store = await getStore();
-    const admin = await store.admin();
+    const store = getStore();
     const body = ['POST', 'PUT'].includes(req.method) ? await readBody(req) : {};
     if (pathname === '/api/login' && req.method === 'POST') {
       // Vercel overwrites this header; local servers use the socket address.
       const ip = process.env.VERCEL ? String(req.headers['x-vercel-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim() : req.socket?.remoteAddress || 'unknown';
-      if (await store.attempt(ip) > 10) return send(429, { error: 'Muitas tentativas. Tente novamente em 15 minutos.' });
-      if (typeof body.password !== 'string' || body.password.length > 256 || !timingSafeEqual(scryptSync(body.password, admin.salt, 64), Buffer.from(admin.hash, 'hex'))) return send(401, { error: 'Senha incorreta.' });
-      await store.resetAttempts(ip);
-      const session = await store.login(admin.hash);
+      if (attempt(ip) > 10) return send(429, { error: 'Muitas tentativas. Tente novamente em 15 minutos.' });
+      if (!verifyPassword(body.password)) return send(401, { error: 'Senha incorreta.' });
+      resetAttempts(ip);
+      const session = issueSession();
       res.setHeader('Set-Cookie', `session=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${secure}`);
       return send(200, { ok: true });
     }
-    const authenticated = await store.authenticated(token, admin.hash);
-    if (pathname === '/api/session' && req.method === 'GET') return send(200, { authenticated });
-    if (!authenticated) return send(401, { error: 'Entre na área administrativa.' });
+    const loggedIn = authenticated(token);
+    if (pathname === '/api/session' && req.method === 'GET') return send(200, { authenticated: loggedIn });
+    if (!loggedIn) return send(401, { error: 'Entre na área administrativa.' });
+    if (pathname === '/api/admin/storage' && req.method === 'GET') return send(200, storageStatus());
     if (pathname === '/api/admin/games' && req.method === 'GET') return send(200, await store.games());
     if (pathname === '/api/admin/games' && req.method === 'POST') {
       const game = validateGame({ ...body, demo: false });
@@ -114,6 +111,7 @@ export default async function handler(req, res) {
     send(404, { error: 'Recurso não encontrado.' });
   } catch (error) {
     if (error instanceof ConfigurationError) return send(503, { error: error.message });
+    if (error instanceof ConflictError) return send(409, { error: error.message });
     if (error instanceof ValidationError) return send(400, { error: error.message });
     console.error('Falha ao atender requisição:', error.code || error.name);
     send(503, { error: 'Não foi possível acessar os dados da loja. Tente novamente em instantes.' });

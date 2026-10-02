@@ -8,11 +8,13 @@ import path from 'node:path';
 process.env.VERCEL = '1';
 process.env.DATABASE_URL = '';
 process.env.POSTGRES_URL = '';
+process.env.BLOB_READ_WRITE_TOKEN = '';
+process.env.ADMIN_PASSWORD = 'test-password-12345';
 const { default: handler } = await import('./api/index.js');
 
-async function request(url, method = 'GET', body) {
+async function request(url, method = 'GET', body, cookie = '') {
   const req = Readable.from([]);
-  Object.assign(req, { url, method, headers: { host: 'store.example' }, body });
+  Object.assign(req, { url, method, headers: { host: 'store.example', cookie }, body });
   const headers = {};
   let status = 200, result;
   const res = {
@@ -38,9 +40,15 @@ test('Vercel sem banco abre a loja e o painel sem gravar arquivos', async () => 
     assert.equal(JSON.parse(games.body).every(game => game.demo && !game.driveUrl), true);
     assert.equal(JSON.parse((await request('/api/session')).body).authenticated, false);
     const login = await request('/api/login', 'POST', { password: 'test-password-12345' });
-    assert.equal(login.status, 503);
-    assert.match(JSON.parse(login.body).error, /DATABASE_URL/);
-    assert.equal((await request('/api/admin/games', 'POST', { title: 'Não salvar' })).status, 503);
+    assert.equal(login.status, 200, 'Login deve funcionar sem banco nem Blob');
+    const cookie = login.headers['set-cookie'].split(';')[0];
+    assert.equal((await request('/api/admin/games', 'GET', undefined, cookie)).status, 200);
+    assert.equal(JSON.parse((await request('/api/admin/storage', 'GET', undefined, cookie)).body).writable, false);
+    const game = { title: 'Não salvar', description: 'Teste', category: 'Indie', platform: 'PC', cover: '', driveUrl: '', instructions: '', published: false };
+    const write = await request('/api/admin/games', 'POST', game, cookie);
+    assert.equal(write.status, 503);
+    assert.match(write.body, /Blob/);
+    assert.equal((await request('/api/admin/games', 'POST', game)).status, 401);
     assert.equal(existsSync(process.env.DATA_DIR), false);
     assert.deepEqual(readdirSync(directory), []);
     assert.match((await request('/api/logout', 'POST')).headers['set-cookie'], /Secure/);
