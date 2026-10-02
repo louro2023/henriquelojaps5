@@ -24,8 +24,18 @@ test('catálogo compartilhado e operações administrativas protegidas',async()=
   assert.equal((await request('/api/admin/games/'+id,options('PUT',{...game,published:true,driveUrl:''}))).status,400);
   assert.equal((await request('/api/admin/games/'+id,options('PUT',{...game,published:true}))).status,200);
   const publicGame=(await (await request('/api/games')).json()).find(g=>g.id===id);assert.equal(publicGame.instructions,game.instructions);assert.equal(publicGame.driveUrl,game.driveUrl);
+  const visibility='/api/admin/games/'+id+'/visibility';
+  assert.equal((await request(visibility,{method:'PUT',body:JSON.stringify({published:false})})).status,401);
+  assert.equal((await request(visibility,options('PUT',{published:'false'}))).status,400);
+  assert.equal((await request(visibility,options('PUT',{published:false}))).status,200);
+  assert.equal((await (await request('/api/games')).json()).some(g=>g.id===id),false);
+  const hidden=(await (await request('/api/admin/games',options('GET'))).json()).find(g=>g.id===id);
+  assert.deepEqual(hidden,{...publicGame,published:false});
+  assert.equal((await request(visibility,options('PUT',{published:true}))).status,200);
+  assert.deepEqual((await (await request('/api/games')).json()).find(g=>g.id===id),publicGame);
   assert.equal((await request('/api/admin/games/'+id,{...options('DELETE'),headers:{Cookie:cookie,Origin:'https://external.example'}})).status,403);
   assert.equal((await request('/api/admin/games/'+id,options('DELETE'))).status,200);
   assert.equal((await (await request('/api/games')).json()).some(g=>g.id===id),false);
+  assert.equal((await request(visibility,options('PUT',{published:true}))).status,409);
   const logout=await request('/api/logout',options('POST'));assert.match(logout.headers.get('set-cookie'),/Max-Age=0/);assert.equal((await request('/api/admin/games')).status,401);
 });

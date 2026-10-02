@@ -99,6 +99,12 @@ export default async function handler(req, res) {
       const game = validateGame({ ...body, demo: false });
       return send(201, { ...game, id: await store.saveGame(game) });
     }
+    const visibility = pathname.match(/^\/api\/admin\/games\/(\d+)\/visibility$/);
+    if (visibility && req.method === 'PUT') {
+      if (typeof body.published !== 'boolean') throw new ValidationError('Informe se o jogo deve ficar público.');
+      await store.setPublished(Number(visibility[1]), body.published, validateGame);
+      return send(200, { ok: true });
+    }
     const match = pathname.match(/^\/api\/admin\/games\/(\d+)$/);
     if (match && ['PUT', 'DELETE'].includes(req.method)) {
       const id = Number(match[1]);

@@ -43,6 +43,8 @@ Entre no painel e clique em **Adicionar jogo**. Preencha nome, categoria, plataf
 
 Os seis jogos iniciais são demonstrações sem download. Podem ser editados ou excluídos. Não são recriados após a gravação de um catálogo vazio.
 
+Na lista do administrador, **Ocultar do público** remove o jogo da loja e do banner sem apagar seus dados. Ele continua disponível no painel com status **Oculto**; use **Publicar** para exibi-lo novamente. Exclusão e alterações de visibilidade na Vercel exigem o Blob configurado acima. Erros de exclusão aparecem na própria janela de confirmação.
+
 ## Sessões e testes
 
 As sessões são cookies HttpOnly assinados, com duração de oito horas, SameSite=Strict e Secure na Vercel. Funcionam entre instâncias sem armazenar sessões no servidor. Logout remove o cookie do navegador; uma cópia anterior do token permanece válida até expirar. Trocar `ADMIN_PASSWORD` e republicar invalida as assinaturas anteriores. O limitador de login em memória é por instância; regras globais adicionais podem ser configuradas no firewall da Vercel.
